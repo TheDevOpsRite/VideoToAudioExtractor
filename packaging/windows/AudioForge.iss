@@ -19,8 +19,8 @@ Source="..\..\dist\AudioForge.exe"; DestDir="{app}"; Flags: ignoreversion
 Source="..\..\AudioForgeLogo.png"; DestDir="{app}"; Flags: ignoreversion
 
 [Icons]
-Name="{autoprograms}\AudioForge"; Filename="{app}\AudioForge.exe"
-Name="{autodesktop}\AudioForge"; Filename="{app}\AudioForge.exe"
+Name="{group}\AudioForge"; Filename="{app}\AudioForge.exe"
+Name="{userdesktop}\AudioForge"; Filename="{app}\AudioForge.exe"
 
 [Run]
 Filename="{app}\AudioForge.exe"; Description="Launch AudioForge"; Flags: nowait postinstall skipifsilent

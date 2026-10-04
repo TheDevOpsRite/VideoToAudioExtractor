@@ -16,9 +16,9 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.Spinner
 import android.widget.TextView
-import com.writingminds.ffmpeg.ExecuteBinaryResponseHandler
-import com.writingminds.ffmpeg.FFmpeg
-import com.writingminds.ffmpeg.LoadBinaryResponseHandler
+import com.github.hiteshsondhi88.libffmpeg.ExecuteBinaryResponseHandler
+import com.github.hiteshsondhi88.libffmpeg.FFmpeg
+import com.github.hiteshsondhi88.libffmpeg.LoadBinaryResponseHandler
 import java.io.File
 
 class MainActivity : Activity() {
@@ -53,7 +53,7 @@ class MainActivity : Activity() {
         }
 
         val logo = ImageView(this).apply {
-            setImageResource(R.drawable.audioforge_logo)
+            setImageDrawable(getDrawable(R.drawable.audioforge_logo))
             scaleType = ImageView.ScaleType.CENTER_INSIDE
         }
         root.addView(logo, LinearLayout.LayoutParams(180, 150).apply { bottomMargin = 8 })
