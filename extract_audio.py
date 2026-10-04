@@ -66,10 +66,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def extract_audio(video: Path, output: Path, audio_format: str, overwrite: bool) -> None:
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = _find_ffmpeg()
     if ffmpeg is None:
         raise RuntimeError(
-            "FFmpeg was not found. Install FFmpeg and make sure its folder is in PATH."
+            "FFmpeg was not found. Reinstall AudioForge or add FFmpeg to PATH."
         )
 
     if not video.is_file():
@@ -106,6 +106,19 @@ def extract_audio(video: Path, output: Path, audio_format: str, overwrite: bool)
             "FFmpeg could not extract an audio stream. "
             "Check that the video contains audio."
         ) from error
+
+
+def _find_ffmpeg() -> str | None:
+    candidates = []
+    bundled_root = getattr(sys, "_MEIPASS", None)
+    if bundled_root:
+        candidates.append(Path(bundled_root) / "ffmpeg.exe")
+    candidates.append(Path(sys.executable).resolve().parent / "ffmpeg.exe")
+    candidates.append(Path(__file__).resolve().parent / "ffmpeg.exe")
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return shutil.which("ffmpeg")
 
 
 class AudioForgeApp:

@@ -1,0 +1,130 @@
+name: Build AudioForge Releases
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example 1.0.0"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+env:
+  APP_VERSION: ${{ github.event.inputs.version || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('0.1.{0}', github.run_number)) }}
+
+jobs:
+  build-windows:
+    name: Build Windows EXE and installer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt pyinstaller
+
+      - name: Download FFmpeg runtime
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path packaging\ffmpeg | Out-Null
+          Invoke-WebRequest `
+            -Uri https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip `
+            -OutFile $env:TEMP\ffmpeg.zip
+          Expand-Archive -Force $env:TEMP\ffmpeg.zip $env:TEMP\ffmpeg-audioforge
+          $ffmpeg = Get-ChildItem $env:TEMP\ffmpeg-audioforge -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if (-not $ffmpeg) { throw "ffmpeg.exe was not found in the downloaded archive." }
+          Copy-Item $ffmpeg.FullName packaging\ffmpeg\ffmpeg.exe
+
+      - name: Build standalone Windows executable
+        run: pyinstaller --noconfirm AudioForge.spec
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows installer
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ env.APP_VERSION }}
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging\windows\AudioForge.iss'
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: AudioForge-windows
+          path: |
+            dist/AudioForge.exe
+            dist/AudioForge-Setup-*.exe
+          if-no-files-found: error
+
+  build-android:
+    name: Build installable Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
+      - name: Build installable debug APK
+        working-directory: android
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Prepare Android artifact
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/AudioForge-${APP_VERSION}.apk"
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AudioForge-android
+          path: dist/AudioForge-*.apk
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/AudioForge-windows/AudioForge.exe
+            artifacts/AudioForge-windows/AudioForge-Setup-*.exe
+            artifacts/AudioForge-android/AudioForge-*.apk
