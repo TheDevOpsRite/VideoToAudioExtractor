@@ -16,8 +16,9 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.Spinner
 import android.widget.TextView
-import com.arthenica.ffmpegkit.FFmpegKit
-import com.arthenica.ffmpegkit.ReturnCode
+import com.writingminds.ffmpeg.ExecuteBinaryResponseHandler
+import com.writingminds.ffmpeg.FFmpeg
+import com.writingminds.ffmpeg.LoadBinaryResponseHandler
 import java.io.File
 
 class MainActivity : Activity() {
@@ -175,10 +176,42 @@ class MainActivity : Activity() {
             "m4a" -> "-c:a aac -b:a 192k"
             else -> "-c:a flac"
         }
-        val command = "-y -i ${quote(input.path)} -vn -map 0:a:0 $codec ${quote(output.path)}"
-        FFmpegKit.executeAsync(command) { session ->
-            val success = ReturnCode.isSuccess(session.returnCode)
-            runOnUiThread { finishConversion(input, output, success, "Video does not contain a readable audio track") }
+        val command = arrayOf("-y", "-i", input.path, "-vn", "-map", "0:a:0", *codec.split(" ").toTypedArray(), output.path)
+        try {
+            val ffmpeg = FFmpeg.getInstance(this)
+            ffmpeg.loadBinary(object : LoadBinaryResponseHandler() {
+                override fun onStart() = Unit
+
+                override fun onSuccess() = Unit
+
+                override fun onFailure() {
+                    runOnUiThread { finishConversion(input, output, false, "FFmpeg could not start") }
+                }
+
+                override fun onFinish() {
+                    try {
+                        ffmpeg.execute(command, object : ExecuteBinaryResponseHandler() {
+                            override fun onStart() = Unit
+
+                            override fun onProgress(message: String?) = Unit
+
+                            override fun onFailure(message: String?) {
+                                runOnUiThread { finishConversion(input, output, false, message ?: "Video does not contain a readable audio track") }
+                            }
+
+                            override fun onSuccess(message: String?) {
+                                runOnUiThread { finishConversion(input, output, true, "") }
+                            }
+
+                            override fun onFinish() = Unit
+                        })
+                    } catch (error: Exception) {
+                        runOnUiThread { finishConversion(input, output, false, error.message ?: "FFmpeg could not start") }
+                    }
+                }
+            })
+        } catch (error: Exception) {
+            finishConversion(input, output, false, error.message ?: "FFmpeg could not start")
         }
     }
 
@@ -211,8 +244,6 @@ class MainActivity : Activity() {
             status.text = error.message ?: "Could not save audio"
         }
     }
-
-    private fun quote(value: String): String = "'${value.replace("'", "'\\''")}'"
 
     private fun getFileName(uri: Uri): String? {
         contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
