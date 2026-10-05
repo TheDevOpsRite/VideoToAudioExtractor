@@ -49,7 +49,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(44, 36, 44, 24)
-            setBackgroundColor(background)
+            setBackgroundColor(this@MainActivity.background)
         }
 
         val logo = ImageView(this).apply {
