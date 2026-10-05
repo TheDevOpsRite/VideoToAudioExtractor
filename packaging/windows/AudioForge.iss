@@ -15,12 +15,12 @@ WizardStyle=modern
 UninstallDisplayIcon={app}\AudioForge.exe
 
 [Files]
-Source="..\..\dist\AudioForge.exe"; DestDir="{app}"; Flags: ignoreversion
-Source="..\..\AudioForgeLogo.png"; DestDir="{app}"; Flags: ignoreversion
+Source: "..\..\dist\AudioForge.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\AudioForgeLogo.png"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name="{group}\AudioForge"; Filename="{app}\AudioForge.exe"
-Name="{userdesktop}\AudioForge"; Filename="{app}\AudioForge.exe"
+Name: "{group}\AudioForge"; Filename: "{app}\AudioForge.exe"
+Name: "{userdesktop}\AudioForge"; Filename: "{app}\AudioForge.exe"
 
 [Run]
-Filename="{app}\AudioForge.exe"; Description="Launch AudioForge"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\AudioForge.exe"; Description: "Launch AudioForge"; Flags: nowait postinstall skipifsilent

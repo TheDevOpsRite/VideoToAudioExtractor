@@ -53,7 +53,7 @@ class MainActivity : Activity() {
         }
 
         val logo = ImageView(this).apply {
-            setImageDrawable(getDrawable(R.drawable.audioforge_logo))
+            setImageResource(R.drawable.audioforge_logo)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
         }
         root.addView(logo, LinearLayout.LayoutParams(180, 150).apply { bottomMargin = 8 })
