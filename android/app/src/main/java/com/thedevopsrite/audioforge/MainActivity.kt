@@ -75,7 +75,10 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setOnClickListener { openVideoPicker() }
         }
-        pickPanel.addView(label("↓", 34f, blue, true))
+        pickPanel.addView(label("↓", 34f, blue, true).apply {
+            gravity = Gravity.CENTER
+            textAlignment = View.TEXT_ALIGNMENT_CENTER
+        }, LinearLayout.LayoutParams(-1, dp(48)))
         selectedFile = label("Choose a video file", 16f, text, true).apply { gravity = Gravity.CENTER }
         pickPanel.addView(selectedFile)
         pickPanel.addView(label("MP4, MOV, AVI, MKV and more", 12f, muted, false))
@@ -193,22 +196,28 @@ class MainActivity : Activity() {
             return
         }
         val codec = when (extension) {
-            "mp3" -> "-c:a libmp3lame -q:a 2"
-            "wav" -> "-c:a pcm_s16le"
-            "m4a" -> "-c:a aac -b:a 192k"
-            else -> "-c:a flac"
+            "mp3" -> arrayOf("-c:a", "libmp3lame", "-q:a", "2")
+            "wav" -> arrayOf("-c:a", "pcm_s16le")
+            "m4a" -> arrayOf("-c:a", "aac", "-b:a", "192k")
+            else -> arrayOf("-c:a", "flac")
         }
         val command = arrayOf(
             "-hide_banner",
             "-loglevel",
             "error",
+            "-probesize",
+            "100M",
+            "-analyzeduration",
+            "100M",
             "-y",
             "-i",
             input.path,
             "-vn",
+            "-sn",
+            "-dn",
             "-map",
-            "0:a:0",
-            *codec.split(" ").toTypedArray(),
+            "0:a:0?",
+            *codec,
             output.path,
         )
         try {
@@ -254,14 +263,30 @@ class MainActivity : Activity() {
                             input,
                             output,
                             false,
-                            message?.trim()?.takeIf { it.isNotEmpty() }
-                                ?: "Video does not contain a readable audio track",
+                            formatFfmpegError(message),
                         )
                     }
                 }
 
                 override fun onSuccess(message: String?) {
                     runOnUiThread { finishConversion(input, output, true, "") }
+                }
+
+                private fun formatFfmpegError(message: String?): String {
+                    val details = message
+                        ?.lineSequence()
+                        ?.map { it.trim() }
+                        ?.filter { it.isNotEmpty() }
+                        ?.lastOrNull()
+                    return when {
+                        details == null -> "FFmpeg could not extract audio from this video"
+                        details.contains("Stream map", ignoreCase = true) ||
+                            details.contains("matches no streams", ignoreCase = true) ->
+                            "No audio stream was found in the selected video"
+                        details.contains("Unknown encoder", ignoreCase = true) ->
+                            "The selected audio format is not supported by this FFmpeg build"
+                        else -> "Audio extraction failed: $details"
+                    }
                 }
 
                 override fun onFinish() = Unit
