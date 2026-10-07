@@ -216,7 +216,11 @@ class MainActivity : Activity() {
             "-sn",
             "-dn",
             "-map",
-            "0:a:0?",
+            "0:a:0",
+            "-ac",
+            "2",
+            "-ar",
+            "44100",
             *codec,
             output.path,
         )
@@ -277,7 +281,15 @@ class MainActivity : Activity() {
                         ?.lineSequence()
                         ?.map { it.trim() }
                         ?.filter { it.isNotEmpty() }
-                        ?.lastOrNull()
+                        ?.lastOrNull {
+                            it.contains("error", ignoreCase = true) ||
+                                it.contains("invalid", ignoreCase = true) ||
+                                it.contains("failed", ignoreCase = true) ||
+                                it.contains("decoder", ignoreCase = true) ||
+                                it.contains("encoder", ignoreCase = true) ||
+                                it.contains("stream", ignoreCase = true)
+                        }
+                        ?: message?.lineSequence()?.map { it.trim() }?.lastOrNull { it.isNotEmpty() }
                     return when {
                         details == null -> "FFmpeg could not extract audio from this video"
                         details.contains("Stream map", ignoreCase = true) ||
