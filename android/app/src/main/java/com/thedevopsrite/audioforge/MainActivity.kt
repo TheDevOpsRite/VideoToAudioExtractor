@@ -106,6 +106,7 @@ class MainActivity : Activity() {
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             progressTintList = android.content.res.ColorStateList.valueOf(blue)
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(surfaceLight)
+            isIndeterminate = true
             visibility = View.GONE
         }
         root.addView(progress, LinearLayout.LayoutParams(-1, dp(8)))
@@ -197,42 +198,78 @@ class MainActivity : Activity() {
             "m4a" -> "-c:a aac -b:a 192k"
             else -> "-c:a flac"
         }
-        val command = arrayOf("-y", "-i", input.path, "-vn", "-map", "0:a:0", *codec.split(" ").toTypedArray(), output.path)
+        val command = arrayOf(
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            input.path,
+            "-vn",
+            "-map",
+            "0:a:0",
+            *codec.split(" ").toTypedArray(),
+            output.path,
+        )
         try {
             val ffmpeg = FFmpeg.getInstance(this)
             ffmpeg.loadBinary(object : LoadBinaryResponseHandler() {
-                override fun onStart() = Unit
+                override fun onStart() {
+                    runOnUiThread { status.text = "Preparing audio extractor..." }
+                }
 
-                override fun onSuccess() = Unit
+                override fun onSuccess() {
+                    executeConversion(ffmpeg, command, input, output)
+                }
 
                 override fun onFailure() {
                     runOnUiThread { finishConversion(input, output, false, "FFmpeg could not start") }
                 }
 
-                override fun onFinish() {
-                    try {
-                        ffmpeg.execute(command, object : ExecuteBinaryResponseHandler() {
-                            override fun onStart() = Unit
-
-                            override fun onProgress(message: String?) = Unit
-
-                            override fun onFailure(message: String?) {
-                                runOnUiThread { finishConversion(input, output, false, message ?: "Video does not contain a readable audio track") }
-                            }
-
-                            override fun onSuccess(message: String?) {
-                                runOnUiThread { finishConversion(input, output, true, "") }
-                            }
-
-                            override fun onFinish() = Unit
-                        })
-                    } catch (error: Exception) {
-                        runOnUiThread { finishConversion(input, output, false, error.message ?: "FFmpeg could not start") }
-                    }
-                }
+                override fun onFinish() = Unit
             })
         } catch (error: Exception) {
             finishConversion(input, output, false, error.message ?: "FFmpeg could not start")
+        }
+    }
+
+    private fun executeConversion(ffmpeg: FFmpeg, command: Array<String>, input: File, output: File) {
+        try {
+            ffmpeg.execute(command, object : ExecuteBinaryResponseHandler() {
+                override fun onStart() {
+                    runOnUiThread { status.text = "Extracting audio..." }
+                }
+
+                override fun onProgress(message: String?) {
+                    runOnUiThread {
+                        if (message?.contains("time=", ignoreCase = true) == true) {
+                            status.text = "Extracting audio..."
+                        }
+                    }
+                }
+
+                override fun onFailure(message: String?) {
+                    runOnUiThread {
+                        finishConversion(
+                            input,
+                            output,
+                            false,
+                            message?.trim()?.takeIf { it.isNotEmpty() }
+                                ?: "Video does not contain a readable audio track",
+                        )
+                    }
+                }
+
+                override fun onSuccess(message: String?) {
+                    runOnUiThread { finishConversion(input, output, true, "") }
+                }
+
+                override fun onFinish() = Unit
+            })
+        } catch (error: Exception) {
+            runOnUiThread {
+                finishConversion(input, output, false, error.message ?: "FFmpeg could not start")
+            }
         }
     }
 
@@ -252,13 +289,14 @@ class MainActivity : Activity() {
     private fun finishConversion(input: File, output: File, success: Boolean, error: String) {
         input.delete()
         convert.isEnabled = true
-        progress.visibility = View.GONE
         if (!success) {
+            progress.visibility = View.GONE
             output.delete()
             status.text = error
             return
         }
         if (!output.isFile || output.length() == 0L) {
+            progress.visibility = View.GONE
             output.delete()
             status.text = "Extraction finished without producing an audio file"
             return
@@ -307,10 +345,14 @@ class MainActivity : Activity() {
                 }
             }
             output.delete()
-            runOnUiThread { status.text = "Audio saved to Downloads/$fileName" }
+            runOnUiThread {
+                progress.visibility = View.GONE
+                status.text = "Audio saved to Downloads/$fileName"
+            }
         } catch (error: Exception) {
             output.delete()
             runOnUiThread {
+                progress.visibility = View.GONE
                 status.text = error.message ?: "Could not save audio to Downloads"
             }
         }
