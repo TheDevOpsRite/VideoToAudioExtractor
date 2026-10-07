@@ -1,19 +1,26 @@
 package com.thedevopsrite.audioforge
 
 import android.app.Activity
+import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import com.github.hiteshsondhi88.libffmpeg.ExecuteBinaryResponseHandler
@@ -36,7 +43,6 @@ class MainActivity : Activity() {
     private lateinit var convert: Button
     private lateinit var progress: ProgressBar
     private var selectedVideo: Uri? = null
-    private var pendingOutput: File? = null
     private var pendingOutputName: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,22 +54,20 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(44, 36, 44, 24)
+            setPadding(dp(24), dp(20), dp(24), dp(20))
             setBackgroundColor(this@MainActivity.background)
         }
 
         val logo = ImageView(this).apply {
-            setImageResource(R.drawable.audioforge_logo)
+            setImageResource(R.drawable.audioforge_logo_full)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
+            adjustViewBounds = true
         }
-        root.addView(logo, LinearLayout.LayoutParams(180, 150).apply { bottomMargin = 8 })
-
-        val title = LinearLayout(this).apply { gravity = Gravity.CENTER }
-        title.addView(label("Audio", 30f, text, true))
-        title.addView(label("Forge", 30f, blue, true))
-        root.addView(title)
+        root.addView(logo, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(190)).apply {
+            bottomMargin = dp(8)
+        })
         root.addView(label("Turn video into sound, beautifully.", 14f, muted, false).apply {
-            setPadding(0, 4, 0, 28)
+            setPadding(0, dp(4), 0, dp(20))
         })
 
         val pickPanel = panel().apply {
@@ -75,20 +79,20 @@ class MainActivity : Activity() {
         selectedFile = label("Choose a video file", 16f, text, true).apply { gravity = Gravity.CENTER }
         pickPanel.addView(selectedFile)
         pickPanel.addView(label("MP4, MOV, AVI, MKV and more", 12f, muted, false))
-        root.addView(pickPanel, LinearLayout.LayoutParams(-1, 190).apply { bottomMargin = 22 })
+        root.addView(pickPanel, LinearLayout.LayoutParams(-1, dp(170)).apply { bottomMargin = dp(16) })
 
         val optionPanel = panel().apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(18, 8, 12, 8)
+            setPadding(dp(18), dp(8), dp(12), dp(8))
         }
         optionPanel.addView(label("OUTPUT FORMAT", 12f, muted, true), LinearLayout.LayoutParams(0, -1, 1f))
         format = Spinner(this).apply {
             adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, arrayOf("mp3", "wav", "m4a", "flac"))
             setSelection(0)
         }
-        optionPanel.addView(format, LinearLayout.LayoutParams(120, -1))
-        root.addView(optionPanel, LinearLayout.LayoutParams(-1, 62).apply { bottomMargin = 22 })
+        optionPanel.addView(format, LinearLayout.LayoutParams(dp(120), -1))
+        root.addView(optionPanel, LinearLayout.LayoutParams(-1, dp(62)).apply { bottomMargin = dp(16) })
 
         convert = Button(this).apply {
             text = "Convert audio"
@@ -97,21 +101,27 @@ class MainActivity : Activity() {
             setBackgroundColor(green)
             setOnClickListener { convertVideo() }
         }
-        root.addView(convert, LinearLayout.LayoutParams(-1, 58).apply { bottomMargin = 12 })
+        root.addView(convert, LinearLayout.LayoutParams(-1, dp(58)).apply { bottomMargin = dp(12) })
 
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             progressTintList = android.content.res.ColorStateList.valueOf(blue)
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(surfaceLight)
             visibility = View.GONE
         }
-        root.addView(progress, LinearLayout.LayoutParams(-1, 8))
+        root.addView(progress, LinearLayout.LayoutParams(-1, dp(8)))
         status = label("Ready when you are", 12f, muted, false).apply { gravity = Gravity.CENTER }
-        root.addView(status, LinearLayout.LayoutParams(-1, 42))
+        root.addView(status, LinearLayout.LayoutParams(-1, dp(42)))
         root.addView(label("Created by The DevOps Rite", 12f, muted, false).apply {
             gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(-1, 40).apply { topMargin = 12 })
-        return root
+        }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(12) })
+        return ScrollView(this).apply {
+            isFillViewport = true
+            addView(root, ViewGroup.LayoutParams(-1, -2))
+        }
     }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density + 0.5f).toInt()
 
     private fun label(value: String, size: Float, color: Int, bold: Boolean): TextView = TextView(this).apply {
         text = value
@@ -144,8 +154,6 @@ class MainActivity : Activity() {
             selectedVideo = data.data
             selectedFile.text = getFileName(selectedVideo!!) ?: "Video selected"
             status.text = "Video ready to convert"
-        } else if (requestCode == REQUEST_SAVE) {
-            saveOutput(data.data!!)
         }
     }
 
@@ -154,18 +162,31 @@ class MainActivity : Activity() {
             status.text = "Choose a video file first"
             return
         }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+            checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(
+                arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE),
+                REQUEST_STORAGE,
+            )
+            status.text = "Storage permission is required to save in Downloads"
+            return
+        }
         convert.isEnabled = false
         progress.visibility = View.VISIBLE
         status.text = "Extracting audio..."
         val extension = format.selectedItem.toString()
         val input = File(cacheDir, "audioforge_input_${System.currentTimeMillis()}.video")
         val output = File(cacheDir, "audioforge_output_${System.currentTimeMillis()}.$extension")
-        pendingOutput = output
         pendingOutputName = "${getFileName(inputUri)?.substringBeforeLast('.') ?: "audio"}.$extension"
         try {
-            contentResolver.openInputStream(inputUri).use { source ->
-                input.outputStream().use { target -> source?.copyTo(target) }
+            val source = contentResolver.openInputStream(inputUri)
+                ?: throw IllegalStateException("Could not open the selected video")
+            source.use {
+                input.outputStream().use { target -> it.copyTo(target) }
             }
+
         } catch (error: Exception) {
             finishConversion(input, output, false, error.message ?: "Could not read video")
             return
@@ -215,6 +236,19 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_STORAGE &&
+            grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+        ) {
+            convertVideo()
+        }
+    }
+
     private fun finishConversion(input: File, output: File, success: Boolean, error: String) {
         input.delete()
         convert.isEnabled = true
@@ -224,25 +258,70 @@ class MainActivity : Activity() {
             status.text = error
             return
         }
-        status.text = "Choose where to save your audio"
-        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "audio/*"
-            putExtra(Intent.EXTRA_TITLE, pendingOutputName)
-        }, REQUEST_SAVE)
+        if (!output.isFile || output.length() == 0L) {
+            output.delete()
+            status.text = "Extraction finished without producing an audio file"
+            return
+        }
+        status.text = "Saving audio to Downloads..."
+        Thread {
+            saveOutputToDownloads(output, pendingOutputName ?: "audio.mp3")
+        }.start()
     }
 
-    private fun saveOutput(destination: Uri) {
-        val output = pendingOutput ?: return
+    private fun saveOutputToDownloads(output: File, fileName: String) {
         try {
-            contentResolver.openOutputStream(destination).use { target ->
-                output.inputStream().use { source -> source.copyTo(target!!) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(MediaStore.Downloads.MIME_TYPE, mimeType(fileName))
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val destination = contentResolver.insert(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    values,
+                ) ?: throw IllegalStateException("Could not create a file in Downloads")
+                try {
+                    contentResolver.openOutputStream(destination).use { target ->
+                        requireNotNull(target) { "Could not open the Downloads file" }
+                        output.inputStream().use { source -> source.copyTo(target) }
+                    }
+                    values.clear()
+                    values.put(MediaStore.Downloads.IS_PENDING, 0)
+                    contentResolver.update(destination, values, null, null)
+                } catch (error: Exception) {
+                    contentResolver.delete(destination, null, null)
+                    throw error
+                }
+            } else {
+                val downloads = Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOWNLOADS,
+                )
+                if (!downloads.exists() && !downloads.mkdirs()) {
+                    throw IllegalStateException("Could not access the Downloads folder")
+                }
+                val destination = File(downloads, fileName)
+                output.inputStream().use { source ->
+                    destination.outputStream().use { target -> source.copyTo(target) }
+                }
             }
             output.delete()
-            status.text = "Audio saved successfully"
+            runOnUiThread { status.text = "Audio saved to Downloads/$fileName" }
         } catch (error: Exception) {
-            status.text = error.message ?: "Could not save audio"
+            output.delete()
+            runOnUiThread {
+                status.text = error.message ?: "Could not save audio to Downloads"
+            }
         }
+    }
+
+    private fun mimeType(fileName: String): String = when {
+        fileName.endsWith(".mp3", true) -> "audio/mpeg"
+        fileName.endsWith(".wav", true) -> "audio/wav"
+        fileName.endsWith(".m4a", true) -> "audio/mp4"
+        fileName.endsWith(".flac", true) -> "audio/flac"
+        else -> "audio/*"
     }
 
     private fun getFileName(uri: Uri): String? {
@@ -254,6 +333,6 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_VIDEO = 10
-        private const val REQUEST_SAVE = 11
+        private const val REQUEST_STORAGE = 12
     }
 }
